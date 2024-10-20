@@ -1,0 +1,31 @@
+{
+  "name": "bt-3-backend",
+  "version": "1.0.0",
+  "description": "Backend for Blockchain Technologies' 3rd assignment",
+  "main": "app.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "tsx app.ts",
+    "dev": "tsx watch app.ts",
+    "ganache": "ganache --wallet.seed myCustomSeed"
+  },
+  "autho": "AzimZen",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.1.0",
+    "cors": "^2.8.5",
+    "ethers": "^6.13.2",
+    "express": "^4.21.0",
+    "fs": "^0.0.1-security",
+    "mongodb": "^6.9.0",
+    "truffle": "^5.11.5",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2",
+    "web3": "^4.13.0"
+  },
+  "devDependencies": {
+    "dotenv": "^16.4.5",
+    "ganache": "^7.9.2"
+  }
+}
