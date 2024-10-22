@@ -21,7 +21,13 @@ const App: FC = () => {
     },
     distance: 0,
   });
-  const [userStats, setUserStats] = useState<Nullable<UserStats>>(null);
+  const [userStats, setUserStats] = useState<UserStats>({
+    lastActivityTimestamp: new Date(),
+    recentReward: 0,
+    totalDistance: 0,
+    totalRewards: 0,
+  });
+  const [totalDistance, setTotalDistance] = useState<bigint>(0n);
 
   const loadBlockChainData = useCallback(async () => {
     try {
@@ -64,46 +70,129 @@ const App: FC = () => {
       if (!tokenNetworkData || !platformNetworkData) return;
 
       // @ts-expect-error
-      const tokenABI = tokenContract.abi;
+      const tokenABI = tokenContractJSON.abi;
       // @ts-expect-error
-      const platformABI = platformContract.abi;
+      const platformABI = platformContractJSON.abi;
 
       // @ts-expect-error
-      const tokenContract = new web3.eth.Contract(
+      const _tokenContract = new web3Instance.eth.Contract(
         tokenABI,
         tokenNetworkData.address
       );
-      setTokenContract(tokenContract);
+      setTokenContract(_tokenContract);
 
       // @ts-expect-error
-      const platformContract = new web3.eth.Contract(
+      const _platformContract = new web3Instance.eth.Contract(
         platformABI,
         platformNetworkData.address
       );
-      setPlatformContract(platformContract);
+      setPlatformContract(_platformContract);
     } catch (error) {
-      console.error("Error loading blockchain data:", error);
       throw new Error(error);
     }
   }, []);
 
   useEffect(() => {
-    loadBlockChainData();
+    console.log("Dads");
+  }, [account]);
+
+  const logContractActivity = useCallback(async () => {
+    const isRegistered = await checkRegister();
+
+    if (!isRegistered) await registerUser();
+
+    if (totalDistance >= 10) {
+      await logActivity(BigInt(totalDistance * 10 ** 18));
+      await getUserStats();
+    }
+  }, [platformContract, tokenContract, account]);
+
+  useEffect(() => {
+    loadBlockChainData()
+      .then(() => {
+        console.log(platformContract);
+      })
+      .then(() => {
+        const eventSource = new EventSource(
+          "http://localhost:5000/stream-geo-info"
+        );
+
+        eventSource.onmessage = async (event: MessageEvent) => {
+          const newGeoInfo: GeoInfo = JSON.parse(event.data);
+          setGeoInfo(newGeoInfo);
+          setTotalDistance(
+            (prev) => prev + BigInt(newGeoInfo.distance * 10 ** 18)
+          );
+        };
+
+        return () => {
+          eventSource.close();
+        };
+      });
   }, [loadBlockChainData]);
 
   useEffect(() => {
-    // Create an EventSource connection to receive coordinates from the server
-    const eventSource = new EventSource("http://localhost:5000/stream-coords");
+    logContractActivity();
+  }, [logContractActivity]);
 
-    eventSource.onmessage = (event: MessageEvent) => {
-      const newGeoInfo: GeoInfo = JSON.parse(event.data);
-      setGeoInfo(newGeoInfo);
-    };
+  const registerUser = async (): Promise<void> => {
+    if (!platformContract) return;
 
-    return () => {
-      eventSource.close();
-    };
-  }, []);
+    await platformContract.methods.registerUser().send({ from: account });
+  };
+
+  const logActivity = async (distance: bigint): Promise<void> => {
+    if (!platformContract) return;
+
+    await platformContract.methods
+      .logActivity(distance)
+      .send({ from: account });
+  };
+
+  const getUserStats = async (): Promise<void> => {
+    if (!platformContract) return;
+
+    await logActivity(BigInt(geoInfo.distance * 10 ** 18));
+
+    const newUserStats = await platformContract.methods
+      .getUserStats(account)
+      .call();
+    setUserStats({
+      lastActivityTimestamp: new Date(Number(newUserStats["0"]) * 1000),
+      recentReward: Number(newUserStats["1"]),
+      totalDistance: Number(newUserStats["2"]) / 10 ** 18,
+      totalRewards: Number(newUserStats["3"]),
+    });
+  };
+
+  const collectRewards = async (): Promise<void> => {
+    if (!platformContract) return;
+
+    await logActivity(totalDistance * 10 ** 18);
+
+    await transferTokensToPlatform();
+
+    await platformContract.methods.collectRewards().call;
+  };
+
+  const checkRegister = async (): Promise<boolean> => {
+    if (!platformContract) return;
+
+    const isRegistered = await platformContract.methods
+      .checkRegister(account)
+      .call();
+
+    return isRegistered;
+  };
+
+  const transferTokensToPlatform = async (): Promise<void> => {
+    if (!tokenContract || !platformContract) return;
+
+    await tokenContract.methods.transfer(
+      platformContract.options.address,
+      userStats.totalRewards
+    );
+  };
 
   const getRunTokenBalance = async () => {
     try {
@@ -116,26 +205,21 @@ const App: FC = () => {
     }
   };
 
-  const getUserStats = async () => {
-    try {
-      // @ts-expect-error
-      const userStats = await platformContract.methods
-        .getUserStats(account)
-        .call();
-
-      setUserStats(userStats);
-    } catch (error) {
-      console.error("Error fetching rewards:", error);
-      throw new Error(error);
-    }
-  };
-
   return (
     <div>
-      <h1>RunToEarn Platform</h1>
+      <h1>Rapid</h1>
       <p>Connected Account: {account}</p>
+      <h2>User stats:</h2>
+      <p>
+        Last activity timestamp:{" "}
+        {userStats.lastActivityTimestamp.toLocaleString()}
+      </p>
+      <p>Recent reward: {userStats.recentReward} RPT</p>
+      <p>Total distance: {userStats.totalDistance} km</p>
+      <p>Total rewards: {userStats.totalRewards} RPT</p>
       <button onClick={getRunTokenBalance}>Check RunToken Balance</button>
-      <button onClick={getUserStats}>Check Rewards</button>
+      <button onClick={getUserStats}>Update user stats</button>
+      <button onClick={collectRewards}>Collect rewards</button>
     </div>
   );
 };

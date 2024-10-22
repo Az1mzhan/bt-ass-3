@@ -1593,7 +1593,7 @@
   },
   "networks": {},
   "schemaVersion": "3.4.16",
-  "updatedAt": "2024-10-20T10:19:34.994Z",
+  "updatedAt": "2024-10-22T07:49:18.494Z",
   "devdoc": {
     "details": "Standard ERC-20 Errors Interface of the https://eips.ethereum.org/EIPS/eip-6093[ERC-6093] custom errors for ERC-20 tokens.",
     "errors": {

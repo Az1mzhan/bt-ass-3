@@ -1,5 +1,5 @@
 export type UserStats = {
-  lastActivityTimestamp: number;
+  lastActivityTimestamp: Date;
   recentReward: number;
   totalDistance: number;
   totalRewards: number;

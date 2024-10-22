@@ -33,7 +33,7 @@ app.post("/contract", (req: Request, res: Response) => {
   }
 });
 
-app.get("/stream-distance", (req: Request, res: Response) => {
+app.get("/stream-geo-info", (req: Request, res: Response) => {
   try {
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
@@ -46,6 +46,7 @@ app.get("/stream-distance", (req: Request, res: Response) => {
         currCoords: generator.getCurrentCoordinates(),
         distance: generator.calculateDistance(),
       };
+      console.log(coordsObject);
 
       // Send the data as an SSE event
       res.status(200).write(`data: ${JSON.stringify(coordsObject)}\n\n`);
