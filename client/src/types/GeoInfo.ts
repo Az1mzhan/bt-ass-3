@@ -4,6 +4,6 @@ export type Coordinates = {
 };
 
 export type GeoInfo = {
-  currCoords: Coordinates;
+  coords: Coordinates;
   distance: number;
 };

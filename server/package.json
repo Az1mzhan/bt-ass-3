@@ -1,15 +1,20 @@
 {
-  "name": "bt-3-backend",
+  "name": "run-to-earn-backend",
   "version": "1.0.0",
-  "description": "Backend for Blockchain Technologies' 3rd assignment",
+  "description": "Run-to-earn platform prototype's backend",
   "main": "app.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "tsx app.ts",
     "dev": "tsx watch app.ts",
-    "ganache": "ganache --wallet.seed myCustomSeed"
+    "auto-dev": "npm-run-all -p blockchain dev",
+    "blockchain": "npm-run-all -p ganache contract",
+    "ganache": "ganache --wallet.seed myCustomSeed",
+    "contract": "npm-run-all -s compile-contract deploy-contract",
+    "compile-contract": "truffle compile --config truffle-config.cjs",
+    "deploy-contract": "truffle migrate --config truffle-config.cjs"
   },
-  "autho": "AzimZen",
+  "author": "AzimZen",
   "license": "ISC",
   "type": "module",
   "dependencies": {
@@ -18,7 +23,9 @@
     "ethers": "^6.13.2",
     "express": "^4.21.0",
     "fs": "^0.0.1-security",
-    "mongodb": "^6.9.0",
+    "mongodb": "^6.10.0",
+    "mongoose": "^8.8.0",
+    "npm-run-all": "^4.1.5",
     "truffle": "^5.11.5",
     "tsx": "^4.19.1",
     "typescript": "^5.6.2",

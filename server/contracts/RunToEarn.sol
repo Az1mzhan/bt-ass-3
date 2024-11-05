@@ -5,7 +5,6 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-// The main token for the platform
 contract RunToken is ERC20, Ownable {
     constructor(uint256 initialSupply) ERC20("RunToken", "RUN") Ownable(msg.sender) {
         _mint(msg.sender, initialSupply);
@@ -16,22 +15,20 @@ contract RunToken is ERC20, Ownable {
     }
 }
 
-// The main contract for the run-to-earn platform
 contract RunToEarn is Ownable, ReentrancyGuard {
     RunToken public runToken;
 
     struct User {
         bool isRegistered;
         uint256 lastActivityTimestamp;
-        uint256 recentReward;  // Represented as fixed-point value
-        uint256 totalDistance; // Represented as fixed-point value (multiplied by 1e18 for precision)
-        uint256 totalRewards;  // Represented as fixed-point value (multiplied by 1e18 for precision)
+        uint256 totalDistance;
+        uint256 totalRewards;
     }
 
     mapping(address => User) public users;
 
-    uint256 public constant REWARD_PER_KM = 10**8; // 0.01 tokens per km, scaled by 1e18 for precision
-    uint256 public constant MIN_TIME_BETWEEN_ACTIVITIES = 1 hours;
+    uint256 public constant REWARD_PER_KM = 10**8;
+    uint256 public constant MIN_TIME_BETWEEN_ACTIVITIES = 10 seconds;
 
     event UserRegistered(address indexed user);
     event ActivityLogged(address indexed user, uint256 distance, uint256 rewards);
@@ -42,19 +39,17 @@ contract RunToEarn is Ownable, ReentrancyGuard {
 
     function registerUser() public {
         require(!users[msg.sender].isRegistered, "User already registered");
-        users[msg.sender] = User(true, 0, 0, 0, 0);
+        users[msg.sender] = User(true, block.timestamp, 0, 0);
         emit UserRegistered(msg.sender);
     }
 
-    // Accept distance in fixed-point format (e.g., 1.234 km as 1234000000000000000)
     function logActivity(uint256 distance) public nonReentrant {
         require(users[msg.sender].isRegistered, "User not registered");
         require(block.timestamp - users[msg.sender].lastActivityTimestamp >= MIN_TIME_BETWEEN_ACTIVITIES, "Too soon since last activity");
 
         uint256 reward = calculateReward(distance);
 
-        users[msg.sender].totalDistance += distance; // Add precise distance in fixed-point form
-        users[msg.sender].recentReward = reward;
+        users[msg.sender].totalDistance += distance;
         users[msg.sender].totalRewards += reward;
         users[msg.sender].lastActivityTimestamp = block.timestamp;
 
@@ -68,35 +63,49 @@ contract RunToEarn is Ownable, ReentrancyGuard {
 
         require(runToken.transfer(msg.sender, reward), "Contract transfer failed");
 
-        // Reset the user's rewards after collection
         users[msg.sender].totalRewards = 0;
+    }
+
+    function checkRegister() public view returns (bool) {
+        return users[msg.sender].isRegistered;
     }
 
     // Adjust reward calculation to accept distance as a fixed-point value
     function calculateReward(uint256 distance) public pure returns (uint256) {
-        // Use fixed-point arithmetic to calculate rewards based on distance
         return distance * REWARD_PER_KM / 10 ** 18;
     }
 
-    function getUserStats(address userAddress) public view returns (uint256, uint256, uint256, uint256) {
+    function convertTotalDistanceToSteps() public view returns (uint256) {
+        uint256 avgStrideLength = 78 * 10 ** 15;
+
+        return (users[msg.sender].totalDistance * 10 ** 3) / avgStrideLength;
+    }
+
+    function calculateBurnedCalories(uint256 weight) public view returns (uint256) {
+        return users[msg.sender].totalDistance * weight / 2;
+    }
+
+    function getUserStats() public view returns (uint256, uint256, uint256) {
         return (
-            users[userAddress].lastActivityTimestamp,
-            users[userAddress].recentReward, // Fixed-point value
-            users[userAddress].totalDistance, // Fixed-point value
-            users[userAddress].totalRewards  // Fixed-point value
+            users[msg.sender].lastActivityTimestamp,
+            users[msg.sender].totalDistance,
+            users[msg.sender].totalRewards
+        );
+    }
+
+    function getHealthStats(uint256 weight) public view returns (uint256, uint256, uint256) {
+        return (
+            users[msg.sender].totalDistance,
+            convertTotalDistanceToSteps(),
+            calculateBurnedCalories(weight)
         );
     }
 
     function getBalance() public view returns (uint256) {
-        return runToken.balanceOf(address(this));
-    }
-
-    function checkRegister(address userAddress) public view returns (bool) {
-        return users[userAddress].isRegistered;
+        return runToken.balanceOf(msg.sender);
     }
 }
 
-// A simple marketplace contract for the platform
 contract RunMarketplace is Ownable, ReentrancyGuard {
     RunToken public runToken;
 

@@ -3,10 +3,14 @@ export type Coordinates = {
   longitude: number;
 };
 
+export type GeoInfo = {
+  coords: Coordinates;
+  distance: number;
+};
+
 export class CoordinatesGenerator {
   // Radius of the Earth in kilometers
   private readonly EARTH_RADIUS_KM = 6371;
-  private distance: number;
 
   private currCoords: Coordinates;
   private nextCoords: Coordinates;
@@ -21,16 +25,17 @@ export class CoordinatesGenerator {
       latitude: coords.latitude,
       longitude: coords.longitude,
     };
-
-    this.distance = 0;
   }
 
-  getCurrentCoordinates() {
-    return this.currCoords;
+  getGeoInfo(): GeoInfo {
+    return {
+      coords: this.currCoords,
+      distance: this.calculateDistance(),
+    };
   }
 
   // Haversine formula to calculate distance between two coordinates
-  calculateDistance(): number {
+  calculateDistance() {
     const lat1 = this.currCoords.latitude * (Math.PI / 180);
     const lat2 = this.nextCoords.latitude * (Math.PI / 180);
     const deltaLat =

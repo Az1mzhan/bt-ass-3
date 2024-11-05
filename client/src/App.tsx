@@ -1,13 +1,32 @@
 import axios from "axios";
-import { useState, useEffect, useCallback, FC } from "react";
-import { Contract, Web3 } from "web3";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  FC,
+  SyntheticEvent,
+  JSX,
+} from "react";
+import { Contract, utils, Web3 } from "web3";
 import { Nullable } from "./types/Nullable";
 import { GeoInfo } from "./types/GeoInfo";
 import { UserStats } from "./types/UserStats";
+import { AccountDetails } from "./types/AccountDetails";
+import "./App.css";
+import { HealthAnalytics } from "./components/health-analytics/HealthAnalytics";
+import { Tab, Tabs } from "@mui/material";
+import { CustomTab } from "./components/custom-tab/CustomTab";
+import AccountDetailsComponent from "./components/account-details/AccountDetailsComponent";
+import { GeoInfoComponent } from "./components/geo-info/GeoInfoComponent";
+import { ActivityDetails } from "./components/activity-details/ActivityDetails";
 
 const App: FC = () => {
   const [web3, setWeb3] = useState<Nullable<Web3>>(null);
-  const [account, setAccount] = useState<string>("");
+  const [accountDetails, setAccountDetails] = useState<AccountDetails>({
+    address: "",
+    chainId: 0,
+    balance: 0,
+  });
 
   const [tokenContract, setTokenContract] =
     useState<Nullable<Contract<object>>>(null);
@@ -15,7 +34,7 @@ const App: FC = () => {
     useState<Nullable<Contract<object>>>(null);
 
   const [geoInfo, setGeoInfo] = useState<GeoInfo>({
-    currCoords: {
+    coords: {
       latitude: 0,
       longitude: 0,
     },
@@ -27,22 +46,40 @@ const App: FC = () => {
     totalDistance: 0,
     totalRewards: 0,
   });
-  const [totalDistance, setTotalDistance] = useState<bigint>(0n);
+  const [coolDownTimer, setCoolDownTimer] = useState<number>(0);
+  const [selectedValue, setSelectedValue] = useState<number>(0);
 
-  const loadBlockChainData = useCallback(async () => {
+  const getAccountInfo = async (
+    account: string = accountDetails.address
+  ): Promise<void> => {
+    const chainId = await window.ethereum.request({
+      method: "eth_chainId",
+    });
+    const balance = await window.ethereum.request({
+      method: "eth_getBalance",
+      params: [account, "latest"],
+    });
+    const etherBalance = parseFloat(utils.fromWei(balance, "ether"));
+
+    setAccountDetails({
+      address: account,
+      chainId: parseInt(chainId, 16),
+      balance: etherBalance,
+    });
+  };
+
+  const loadBlockChainData = useCallback(async (): Promise<void> => {
     try {
-      // @ts-expect-error
       if (!window.ethereum) return;
 
-      // @ts-expect-error
       const web3Instance = new Web3(window.ethereum);
       setWeb3(web3Instance);
 
-      // @ts-expect-error
       const accounts = await window.ethereum.request({
         method: "eth_requestAccounts",
       });
-      setAccount(accounts[0]);
+
+      await getAccountInfo(accounts[0]);
 
       const networkId = await web3Instance.eth.net.getId();
 
@@ -74,15 +111,13 @@ const App: FC = () => {
       // @ts-expect-error
       const platformABI = platformContractJSON.abi;
 
-      // @ts-expect-error
-      const _tokenContract = new web3Instance.eth.Contract(
+      const _tokenContract: Contract<object> = new web3Instance.eth.Contract(
         tokenABI,
         tokenNetworkData.address
       );
       setTokenContract(_tokenContract);
 
-      // @ts-expect-error
-      const _platformContract = new web3Instance.eth.Contract(
+      const _platformContract: Contract<object> = new web3Instance.eth.Contract(
         platformABI,
         platformNetworkData.address
       );
@@ -93,133 +128,147 @@ const App: FC = () => {
   }, []);
 
   useEffect(() => {
-    console.log("Dads");
-  }, [account]);
-
-  const logContractActivity = useCallback(async () => {
-    const isRegistered = await checkRegister();
-
-    if (!isRegistered) await registerUser();
-
-    if (totalDistance >= 10) {
-      await logActivity(BigInt(totalDistance * 10 ** 18));
-      await getUserStats();
-    }
-  }, [platformContract, tokenContract, account]);
-
-  useEffect(() => {
-    loadBlockChainData()
-      .then(() => {
-        console.log(platformContract);
-      })
-      .then(() => {
-        const eventSource = new EventSource(
-          "http://localhost:5000/stream-geo-info"
-        );
-
-        eventSource.onmessage = async (event: MessageEvent) => {
-          const newGeoInfo: GeoInfo = JSON.parse(event.data);
-          setGeoInfo(newGeoInfo);
-          setTotalDistance(
-            (prev) => prev + BigInt(newGeoInfo.distance * 10 ** 18)
-          );
-        };
-
-        return () => {
-          eventSource.close();
-        };
-      });
+    loadBlockChainData();
   }, [loadBlockChainData]);
 
+  const authorizeUser = useCallback(
+    async (account: string = accountDetails.address): Promise<void> => {
+      const isRegistered = await platformContract?.methods
+        .checkRegister()
+        .call({ from: account });
+
+      if (!isRegistered)
+        await platformContract?.methods.registerUser().send({ from: account });
+    },
+    [platformContract]
+  );
+
+  const handleAccountDetails = async (accounts: string[]): Promise<void> => {
+    await getAccountInfo(accounts[0]);
+    await authorizeUser(accounts[0]);
+  };
+
   useEffect(() => {
-    logContractActivity();
-  }, [logContractActivity]);
+    console.log("dad: ", platformContract);
 
-  const registerUser = async (): Promise<void> => {
     if (!platformContract) return;
 
-    await platformContract.methods.registerUser().send({ from: account });
-  };
+    authorizeUser();
 
-  const logActivity = async (distance: bigint): Promise<void> => {
-    if (!platformContract) return;
+    window.ethereum.on("accountsChanged", handleAccountDetails);
 
-    await platformContract.methods
-      .logActivity(distance)
-      .send({ from: account });
-  };
+    const eventSource = new EventSource(
+      "http://localhost:5000/stream-geo-info"
+    );
 
-  const getUserStats = async (): Promise<void> => {
-    if (!platformContract) return;
+    eventSource.onmessage = async (event: MessageEvent): Promise<void> => {
+      const newGeoInfo: GeoInfo = JSON.parse(event.data);
+      setGeoInfo(newGeoInfo);
+      console.log(newGeoInfo);
 
-    await logActivity(BigInt(geoInfo.distance * 10 ** 18));
+      const isRegistered = await platformContract?.methods
+        .checkRegister()
+        .call({ from: accountDetails.address });
 
-    const newUserStats = await platformContract.methods
-      .getUserStats(account)
-      .call();
+      if (isRegistered) {
+        const newUserStats = await platformContract?.methods
+          .getUserStats()
+          .call({ from: accountDetails.address });
+
+        setUserStats({
+          lastActivityTimestamp: new Date(Number(newUserStats["0"]) * 1000),
+          totalDistance: Number(newUserStats["1"]) / 10 ** 18,
+          totalRewards: Number(newUserStats["2"]),
+        });
+      }
+    };
+
+    return () => {
+      eventSource.close();
+      window.ethereum.removeListener("accountsChanged", handleAccountDetails);
+    };
+  }, [platformContract]);
+
+  const loadUserStats = async (): Promise<void> => {
+    console.log(platformContract);
+
+    await platformContract?.methods
+      .logActivity(BigInt(geoInfo.distance * 10 ** 18))
+      .send({ from: accountDetails.address });
+
+    const newUserStats = await platformContract?.methods
+      .getUserStats()
+      .call({ from: accountDetails.address });
+
     setUserStats({
       lastActivityTimestamp: new Date(Number(newUserStats["0"]) * 1000),
-      recentReward: Number(newUserStats["1"]),
-      totalDistance: Number(newUserStats["2"]) / 10 ** 18,
-      totalRewards: Number(newUserStats["3"]),
+      totalDistance: Number(newUserStats["1"]) / 10 ** 18,
+      totalRewards: Number(newUserStats["2"]),
     });
   };
 
+  const getUserStats = async () => {
+    await loadUserStats();
+  };
+
+  const getBalance = async (): Promise<number> => {
+    await tokenContract?.methods
+      .balanceOf()
+      .call({ from: accountDetails.address });
+  };
+
   const collectRewards = async (): Promise<void> => {
-    if (!platformContract) return;
+    await tokenContract?.methods
+      .transfer(platformContract?.options.address, userStats.totalRewards)
+      .send({ from: accountDetails.address });
 
-    await logActivity(totalDistance * 10 ** 18);
-
-    await transferTokensToPlatform();
-
-    await platformContract.methods.collectRewards().call;
+    await platformContract?.methods
+      .collectRewards()
+      .send({ from: accountDetails.address });
   };
 
-  const checkRegister = async (): Promise<boolean> => {
-    if (!platformContract) return;
-
-    const isRegistered = await platformContract.methods
-      .checkRegister(account)
-      .call();
-
-    return isRegistered;
+  const handleSelectedValue = (e: SyntheticEvent, newValue: number) => {
+    setSelectedValue(newValue);
   };
 
-  const transferTokensToPlatform = async (): Promise<void> => {
-    if (!tokenContract || !platformContract) return;
-
-    await tokenContract.methods.transfer(
-      platformContract.options.address,
-      userStats.totalRewards
-    );
-  };
-
-  const getRunTokenBalance = async () => {
-    try {
-      // @ts-expect-error
-      const balance = await tokenContract.methods.balanceOf(account).call();
-      console.log("RunToken Balance:", balance);
-    } catch (error) {
-      console.error("Error fetching RunToken balance:", error);
-      throw new Error(error);
-    }
-  };
+  const tabLabels: string[] = [
+    "Account details",
+    "Geo info",
+    "Activity details",
+    "Health metrics",
+  ];
+  const tabComponents: JSX.Element[] = [
+    <AccountDetailsComponent accountDetails={accountDetails} />,
+    <GeoInfoComponent geoInfo={geoInfo} />,
+    <ActivityDetails
+      userStats={userStats}
+      getUserStats={getUserStats}
+      collectRewards={collectRewards}
+    />,
+    <HealthAnalytics
+      platformContract={platformContract}
+      account={accountDetails.address}
+    />,
+  ];
 
   return (
-    <div>
-      <h1>Rapid</h1>
-      <p>Connected Account: {account}</p>
-      <h2>User stats:</h2>
-      <p>
-        Last activity timestamp:{" "}
-        {userStats.lastActivityTimestamp.toLocaleString()}
-      </p>
-      <p>Recent reward: {userStats.recentReward} RPT</p>
-      <p>Total distance: {userStats.totalDistance} km</p>
-      <p>Total rewards: {userStats.totalRewards} RPT</p>
-      <button onClick={getRunTokenBalance}>Check RunToken Balance</button>
-      <button onClick={getUserStats}>Update user stats</button>
-      <button onClick={collectRewards}>Collect rewards</button>
+    <div className="app">
+      <Tabs
+        value={selectedValue}
+        onChange={handleSelectedValue}
+        indicatorColor="white"
+      >
+        {tabLabels.map((label) => (
+          <Tab label={label} />
+        ))}
+      </Tabs>
+      {tabComponents.map((component, id) => (
+        <CustomTab
+          key={id}
+          isHidden={selectedValue !== id}
+          element={component}
+        />
+      ))}
     </div>
   );
 };
