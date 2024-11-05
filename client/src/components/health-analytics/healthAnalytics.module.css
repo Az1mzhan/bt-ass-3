@@ -1,0 +1,11 @@
+.healthAnalytics {
+  display: flex;
+}
+
+.chartBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/*# sourceMappingURL=healthAnalytics.module.css.map */
