@@ -33,10 +33,27 @@ span {
   font-size: 20px;
 }
 
+.dataContainer {
+  padding-left: 30px;
+}
+
 .dataCell {
+  box-sizing: border-box;
+  width: 700px;
   display: flex;
-  column-gap: 10px;
-  margin: 20px 10px 0;
+  justify-content: space-between;
+  align-items: center;
+  background-color: rgba(255, 255, 255, 0.1);
+  padding: 20px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  backdrop-filter: blur(12px);
+}
+
+.dataCell:before {
+  background: linear-gradient(90deg, transparent, rgba(147, 51, 234, 0.5), transparent);
+  opacity: 0;
 }
 
 .activityBtn {
@@ -46,4 +63,8 @@ span {
 
 .activityBtn > p {
   margin: 0;
+}
+
+.note {
+  font-style: italic;
 }

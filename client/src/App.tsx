@@ -1,4 +1,9 @@
 import axios from "axios";
+import { Contract, TransactionReceipt, utils, Web3 } from "web3";
+import { Nullable } from "./types/Nullable";
+import { GeoInfo } from "./types/GeoInfo";
+import { UserStats } from "./types/UserStats";
+import { AccountDetails } from "./types/AccountDetails";
 import {
   useState,
   useEffect,
@@ -7,18 +12,14 @@ import {
   SyntheticEvent,
   JSX,
 } from "react";
-import { Contract, utils, Web3 } from "web3";
-import { Nullable } from "./types/Nullable";
-import { GeoInfo } from "./types/GeoInfo";
-import { UserStats } from "./types/UserStats";
-import { AccountDetails } from "./types/AccountDetails";
-import "./App.css";
-import { HealthAnalytics } from "./components/health-analytics/HealthAnalytics";
-import { Tab, Tabs } from "@mui/material";
-import { CustomTab } from "./components/custom-tab/CustomTab";
 import AccountDetailsComponent from "./components/account-details/AccountDetailsComponent";
 import { GeoInfoComponent } from "./components/geo-info/GeoInfoComponent";
 import { ActivityDetails } from "./components/activity-details/ActivityDetails";
+import { CustomTab } from "./components/custom-tab/CustomTab";
+import { HealthAnalytics } from "./components/health-analytics/HealthAnalytics";
+import { Tab, Tabs } from "@mui/material";
+import { styled } from "@mui/system";
+import "./App.css";
 
 const App: FC = () => {
   const [web3, setWeb3] = useState<Nullable<Web3>>(null);
@@ -46,7 +47,9 @@ const App: FC = () => {
     totalDistance: 0,
     totalRewards: 0,
   });
-  const [coolDownTimer, setCoolDownTimer] = useState<number>(0);
+
+  const [tokenBalance, setTokenBalance] = useState<number>(0);
+  const [totalDistance, setTotalDistance] = useState<number>(0);
   const [selectedValue, setSelectedValue] = useState<number>(0);
 
   const getAccountInfo = async (
@@ -60,12 +63,14 @@ const App: FC = () => {
       params: [account, "latest"],
     });
     const etherBalance = parseFloat(utils.fromWei(balance, "ether"));
+    const tokenBalance = await getBalance();
 
     setAccountDetails({
       address: account,
       chainId: parseInt(chainId, 16),
       balance: etherBalance,
     });
+    setTokenBalance(tokenBalance);
   };
 
   const loadBlockChainData = useCallback(async (): Promise<void> => {
@@ -123,7 +128,7 @@ const App: FC = () => {
       );
       setPlatformContract(_platformContract);
     } catch (error) {
-      throw new Error(error);
+      console.error(error);
     }
   }, []);
 
@@ -149,9 +154,7 @@ const App: FC = () => {
   };
 
   useEffect(() => {
-    console.log("dad: ", platformContract);
-
-    if (!platformContract) return;
+    if (!platformContract || !tokenContract) return;
 
     authorizeUser();
 
@@ -162,23 +165,28 @@ const App: FC = () => {
     );
 
     eventSource.onmessage = async (event: MessageEvent): Promise<void> => {
-      const newGeoInfo: GeoInfo = JSON.parse(event.data);
-      setGeoInfo(newGeoInfo);
-      console.log(newGeoInfo);
+      const geoInfo: GeoInfo = JSON.parse(event.data);
+      setGeoInfo(geoInfo);
+      setTotalDistance((prevState) => prevState + geoInfo.distance);
 
       const isRegistered = await platformContract?.methods
         .checkRegister()
         .call({ from: accountDetails.address });
 
       if (isRegistered) {
-        const newUserStats = await platformContract?.methods
+        const tokenBalance = await getBalance();
+        setTokenBalance(tokenBalance);
+
+        console.log(tokenBalance);
+
+        const userStats = await platformContract?.methods
           .getUserStats()
           .call({ from: accountDetails.address });
 
         setUserStats({
-          lastActivityTimestamp: new Date(Number(newUserStats["0"]) * 1000),
-          totalDistance: Number(newUserStats["1"]) / 10 ** 18,
-          totalRewards: Number(newUserStats["2"]),
+          lastActivityTimestamp: new Date(Number(userStats["0"]) * 1000),
+          totalDistance: Number(userStats["1"]) / 10 ** 18,
+          totalRewards: Number(userStats["2"]),
         });
       }
     };
@@ -187,49 +195,91 @@ const App: FC = () => {
       eventSource.close();
       window.ethereum.removeListener("accountsChanged", handleAccountDetails);
     };
-  }, [platformContract]);
+  }, [platformContract, tokenContract]);
 
   const loadUserStats = async (): Promise<void> => {
-    console.log(platformContract);
-
+    // @ts-expect-error
     await platformContract?.methods
-      .logActivity(BigInt(geoInfo.distance * 10 ** 18))
-      .send({ from: accountDetails.address });
-
-    const newUserStats = await platformContract?.methods
-      .getUserStats()
-      .call({ from: accountDetails.address });
-
-    setUserStats({
-      lastActivityTimestamp: new Date(Number(newUserStats["0"]) * 1000),
-      totalDistance: Number(newUserStats["1"]) / 10 ** 18,
-      totalRewards: Number(newUserStats["2"]),
-    });
+      .logActivity(BigInt(totalDistance * 10 ** 18))
+      .send({ from: accountDetails.address })
+      .once(
+        "confirmation",
+        (confirmationNumber: number, receipt: TransactionReceipt) => {
+          if (confirmationNumber >= 1 && receipt?.status) {
+            getUserStats().then((res) => {
+              setUserStats({
+                lastActivityTimestamp: new Date(Number(res["0"]) * 1000),
+                totalDistance: Number(res["1"]) / 10 ** 18,
+                totalRewards: Number(res["2"]),
+              });
+            });
+          }
+        }
+      );
   };
 
-  const getUserStats = async () => {
-    await loadUserStats();
+  const getUserStats = async (): Promise<object> => {
+    const userStats = await platformContract?.methods
+      .getUserStats()
+      .call({ from: accountDetails.address });
   };
 
   const getBalance = async (): Promise<number> => {
-    await tokenContract?.methods
-      .balanceOf()
+    const tokenBalance = await tokenContract?.methods
+      .balanceOf(accountDetails.address)
       .call({ from: accountDetails.address });
+
+    return Number(tokenBalance);
   };
 
   const collectRewards = async (): Promise<void> => {
+    // @ts-expect-error
     await tokenContract?.methods
       .transfer(platformContract?.options.address, userStats.totalRewards)
-      .send({ from: accountDetails.address });
-
-    await platformContract?.methods
-      .collectRewards()
-      .send({ from: accountDetails.address });
+      .send({ from: accountDetails.address })
+      .once(
+        "confirmation",
+        (confirmationNumber: number, receipt: TransactionReceipt) => {
+          if (confirmationNumber >= 1 && receipt?.status) {
+            platformContract?.methods
+              .collectRewards()
+              .send({ from: accountDetails.address })
+              .then(async () => {
+                const newTokenBalance = await getBalance();
+                setTokenBalance(newTokenBalance);
+                setTotalDistance(0);
+              });
+          }
+        }
+      );
   };
 
   const handleSelectedValue = (e: SyntheticEvent, newValue: number) => {
     setSelectedValue(newValue);
   };
+
+  const StyledTabs = styled(Tabs)({
+    background:
+      "linear-gradient(135deg, rgba(58, 58, 58, 0.2), rgba(46, 46, 46, 0.5))",
+    color: "white",
+    indicatorColor: "white",
+    "& .MuiTabs-indicator": {
+      backgroundColor: "white",
+    },
+    padding: "8px 0",
+    marginBottom: "32px",
+  });
+
+  const StyledTab = styled(Tab)({
+    fontSize: "16px",
+    fontFamily: "'Montserrat', sans-serif",
+    color: "white",
+    textTransform: "none",
+    fontWeight: "bold",
+    "&.Mui-selected": {
+      color: "white",
+    },
+  });
 
   const tabLabels: string[] = [
     "Account details",
@@ -238,11 +288,14 @@ const App: FC = () => {
     "Health metrics",
   ];
   const tabComponents: JSX.Element[] = [
-    <AccountDetailsComponent accountDetails={accountDetails} />,
+    <AccountDetailsComponent
+      accountDetails={accountDetails}
+      tokenBalance={tokenBalance}
+    />,
     <GeoInfoComponent geoInfo={geoInfo} />,
     <ActivityDetails
       userStats={userStats}
-      getUserStats={getUserStats}
+      loadUserStats={loadUserStats}
       collectRewards={collectRewards}
     />,
     <HealthAnalytics
@@ -253,15 +306,15 @@ const App: FC = () => {
 
   return (
     <div className="app">
-      <Tabs
+      <StyledTabs
         value={selectedValue}
         onChange={handleSelectedValue}
         indicatorColor="white"
       >
         {tabLabels.map((label) => (
-          <Tab label={label} />
+          <StyledTab label={label} />
         ))}
-      </Tabs>
+      </StyledTabs>
       {tabComponents.map((component, id) => (
         <CustomTab
           key={id}

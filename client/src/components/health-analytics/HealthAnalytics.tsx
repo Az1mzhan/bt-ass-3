@@ -22,6 +22,7 @@ export const HealthAnalytics: FC<Props> = ({
     burnedCalories: 0,
   });
   const [chartInfo, setChartInfo] = useState<GeoInfo[]>([]);
+  const [timeStamps, setTimestamps] = useState<string[]>([]);
 
   const getHealthAnalyticsData = useCallback(() => {
     setInterval(() => {
@@ -31,13 +32,11 @@ export const HealthAnalytics: FC<Props> = ({
         .getHealthStats(70)
         .call({ from: account });
 
-      console.log(healthRawData);
-
-      healthRawData.then(() => {
+      healthRawData.then((res) => {
         setHealthStats({
-          totalDistance: Number(healthRawData[0]),
-          totalSteps: Number(healthRawData[1]),
-          burnedCalories: Number(healthRawData[2]),
+          totalDistance: Number(res[0]),
+          totalSteps: Number(res[1]),
+          burnedCalories: Number(res[2]),
         });
       });
 
@@ -55,6 +54,20 @@ export const HealthAnalytics: FC<Props> = ({
   return (
     <div className={styles.healthAnalytics}>
       <div className={styles.chartBlock}>
+        <LineChart
+          series={[
+            {
+              label: "Covered distance (km)",
+              data: chartInfo.map((item) => item.distance),
+            },
+          ]}
+          width={1500}
+          height={600}
+          grid={{ vertical: true, horizontal: true }}
+        />
+        <h3>Distance dynamics</h3>
+      </div>
+      <div className={styles.chartBlock}>
         <Gauge
           width={300}
           height={200}
@@ -69,22 +82,11 @@ export const HealthAnalytics: FC<Props> = ({
           width={300}
           height={200}
           value={healthStats.totalSteps}
+          valueMax={10000}
           startAngle={-90}
           endAngle={90}
         />
         <h3>Total Steps</h3>
-      </div>
-      <div className={styles.chartBlock}>
-        <LineChart
-          series={[
-            {
-              data: chartInfo.map((item) => item.distance),
-            },
-          ]}
-          width={500}
-          height={300}
-        />
-        <h3>Distance dynamics</h3>
       </div>
     </div>
   );

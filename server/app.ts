@@ -1,4 +1,5 @@
 import GeoInfoModel from "./models/GeoInfo";
+import User from "./models/User";
 import cors from "cors";
 import { readFileSync } from "fs";
 import express, { Request, Response } from "express";
@@ -74,6 +75,29 @@ app.get("/chart-info", async (req: Request, res: Response) => {
     const geoInfoArray = await GeoInfoModel.find({}).limit(10);
 
     res.status(200).send(geoInfoArray);
+  } catch (err) {
+    console.error(err);
+  }
+});
+
+// DEPRECATED ENDPOINT
+app.post("/register-user", async (req: Request, res: Response) => {
+  try {
+    const { email, name, surname, birthdate, height, weight, gender } =
+      req.body;
+
+    const user = new User({
+      email: email,
+      name: name,
+      surname: surname,
+      birthdate: birthdate,
+      height: height,
+      weight: weight,
+      gender: gender,
+    });
+    await user.save();
+
+    res.status(200).send({ msg: "User has been successfully saved" });
   } catch (err) {
     console.error(err);
   }

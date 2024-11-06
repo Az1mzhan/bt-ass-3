@@ -1,5 +1,5 @@
-import { FC, useEffect, useRef } from "react";
-import { GeoInfo } from "../../types/GeoInfo";
+import { FC, useEffect, useRef, useState } from "react";
+import { Coordinates, GeoInfo } from "../../types/GeoInfo";
 import { Placemark, YMaps, Map, ZoomControl } from "@pbe/react-yandex-maps";
 import styles from "./geoInfoComponent.module.css";
 
@@ -8,31 +8,42 @@ interface Props {
 }
 
 export const GeoInfoComponent: FC<Props> = ({ geoInfo }: Props) => {
-  const mapRef = useRef<any>(null); // Create a ref to hold the map instance
+  const [placemarkCoords, setPlacemarkCoords] = useState<Coordinates>({
+    latitude: 0,
+    longitude: 0,
+  });
+  const mapRef = useRef<any>(null);
 
   useEffect(() => {
     if (mapRef.current) {
-      // Check if mapRef is set and update the center
       mapRef.current.setCenter([
         geoInfo.coords.latitude,
         geoInfo.coords.longitude,
       ]);
+
+      setPlacemarkCoords({
+        latitude: geoInfo.coords.latitude,
+        longitude: geoInfo.coords.longitude,
+      });
     }
-  }, [geoInfo]); // Run this effect whenever geoInfo changes
+  }, [geoInfo]);
 
   return (
-    <>
-      <div className="dataCell">
-        <h3>Latitude: </h3>
-        <span>{Number(geoInfo.coords.latitude)}</span>
-      </div>
-      <div className="dataCell">
-        <h3>Longitude: </h3>
-        <span>{geoInfo.coords.longitude}</span>
-      </div>
-      <div className="dataCell">
-        <h3>Recent covered distance: </h3>
-        <span>{geoInfo.distance} km</span>
+    <div className={styles.geoInfo}>
+      <div className={styles.dataContainer}>
+        <div className="dataCell">
+          <h3>Latitude: </h3>
+          <span>{Number(geoInfo.coords.latitude)}</span>
+        </div>
+        <div className="dataCell">
+          <h3>Longitude: </h3>
+          <span>{geoInfo.coords.longitude}</span>
+        </div>
+        <div className="dataCell">
+          <h3>Recent covered distance: </h3>
+          <span>{geoInfo.distance} km</span>
+        </div>
+        <p className={styles.note}>Note: Geo info updates every 10 seconds</p>
       </div>
       <YMaps>
         <Map
@@ -44,11 +55,11 @@ export const GeoInfoComponent: FC<Props> = ({ geoInfo }: Props) => {
           instanceRef={mapRef}
         >
           <Placemark
-            geometry={[geoInfo.coords.longitude, geoInfo.coords.latitude]}
+            geometry={[placemarkCoords.longitude, placemarkCoords.latitude]}
           />
           <ZoomControl />
         </Map>
       </YMaps>
-    </>
+    </div>
   );
 };
